@@ -1,4 +1,4 @@
-const { getValidToken } = require('./_qb-token-store');
+const { decryptToken } = require('./_qb-token-store');
 
 const QB_BASE = 'https://sandbox-quickbooks.api.intuit.com';
 
@@ -26,27 +26,27 @@ function mapQBAccountToCategory(accountName, accountType) {
   const t = (accountType || '').toLowerCase();
 
   if (t === 'income' || t === 'revenue') {
-    if (n.includes('cater') || n.includes('event'))                           return 'Revenue:Catering & Events';
+    if (n.includes('cater') || n.includes('event'))                               return 'Revenue:Catering & Events';
     if (n.includes('retail') || n.includes('product') || n.includes('packaged')) return 'Revenue:Retail / Packaged Goods';
     return 'Revenue:Food & Beverage Sales';
   }
 
   if (t === 'cost of goods sold') {
     if (n.includes('bev') || n.includes('drink') || n.includes('liquor') || n.includes('bar')) return 'COGS:Beverage Cost';
-    if (n.includes('food') || n.includes('ingredi') || n.includes('produce'))  return 'COGS:Food Cost';
+    if (n.includes('food') || n.includes('ingredi') || n.includes('produce'))                  return 'COGS:Food Cost';
     return 'COGS:Other COGS';
   }
 
   if (t === 'expense' || t === 'other expense') {
     if (n.includes('payroll') || n.includes('wage') || n.includes('labor') || n.includes('salary')) return 'Expense:Labor & Payroll';
-    if (n.includes('rent')    || n.includes('lease'))                          return 'Expense:Rent';
-    if (n.includes('utilit')  || n.includes('electric') || n.includes('gas'))  return 'Expense:Utilities';
-    if (n.includes('market')  || n.includes('adverti'))                        return 'Expense:Marketing';
-    if (n.includes('software')|| n.includes('subscript'))                      return 'Expense:Software & Subscriptions';
-    if (n.includes('suppli')  || n.includes('paper') || n.includes('clean'))   return 'Expense:Supplies';
-    if (n.includes('insur'))                                                    return 'Expense:Insurance';
-    if (n.includes('repair')  || n.includes('mainten'))                        return 'Expense:Repairs & Maintenance';
-    if (n.includes('legal')   || n.includes('account') || n.includes('consult')) return 'Expense:Professional Fees';
+    if (n.includes('rent')    || n.includes('lease'))                                               return 'Expense:Rent';
+    if (n.includes('utilit')  || n.includes('electric') || n.includes('gas'))                      return 'Expense:Utilities';
+    if (n.includes('market')  || n.includes('adverti'))                                             return 'Expense:Marketing';
+    if (n.includes('software')|| n.includes('subscript'))                                           return 'Expense:Software & Subscriptions';
+    if (n.includes('suppli')  || n.includes('paper') || n.includes('clean'))                       return 'Expense:Supplies';
+    if (n.includes('insur'))                                                                         return 'Expense:Insurance';
+    if (n.includes('repair')  || n.includes('mainten'))                                             return 'Expense:Repairs & Maintenance';
+    if (n.includes('legal')   || n.includes('account') || n.includes('consult'))                   return 'Expense:Professional Fees';
     return 'Expense:Other / Misc';
   }
 
@@ -141,44 +141,21 @@ exports.handler = async (event) => {
   };
 
   try {
-    const tokenData    = await getValidToken(event.headers.cookie || '', process.env.QB_TOKEN_SECRET);
+    // Get token from Authorization header (sent by dashboard JS)
+    const authHeader = event.headers['authorization'] || event.headers['Authorization'] || '';
+    const encrypted  = authHeader.replace('Bearer ', '').trim();
+
+    if (!encrypted) throw new Error('No token provided');
+
+    const tokenSecret = process.env.QB_TOKEN_SECRET;
+    const tokenData   = decryptToken(decodeURIComponent(encrypted), tokenSecret);
+
+    if (tokenData.expires_at < Date.now()) throw new Error('Token expired — please reconnect QuickBooks');
+
     const { access_token, realmId } = tokenData;
 
     const now       = new Date();
     const endDate   = now.toISOString().slice(0, 10);
     const startDate = new Date(new Date().setFullYear(now.getFullYear() - 1)).toISOString().slice(0, 10);
 
-    const [plReport, txReport] = await Promise.all([
-      fetchPLReport(realmId, access_token, startDate, endDate),
-      fetchTransactions(realmId, access_token, startDate, endDate)
-    ]);
-
-    const budgetAnnual  = parsePLToBudget(plReport);
-    const budgetMonthly = {};
-    Object.keys(budgetAnnual).forEach(k => {
-      budgetMonthly[k] = Math.round(budgetAnnual[k] / 12);
-    });
-
-    const transactions = parseTransactions(txReport);
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        ok: true,
-        realmId,
-        dateRange: { startDate, endDate },
-        budget: budgetMonthly,
-        transactions,
-        raw: { accountsFound: [...new Set(transactions.map(t => t.category))] }
-      })
-    };
-
-  } catch (err) {
-    return {
-      statusCode: 401,
-      headers,
-      body: JSON.stringify({ ok: false, error: err.message })
-    };
-  }
-};
+    const [plReport, txReport] = aw
