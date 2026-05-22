@@ -61,7 +61,7 @@ exports.handler = async (event) => {
       Location: `/?qb_connected=1&realmId=${realmId}`,
       'Set-Cookie': [
         `qb_state=; HttpOnly; Secure; Max-Age=0; Path=/`,
-        `qb_tokens=${encrypted}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=8640000`
+        `qb_tokens=${encrypted}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=8640000`
       ].join(', ')
     },
     body: ''
