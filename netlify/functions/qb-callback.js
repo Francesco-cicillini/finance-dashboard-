@@ -59,10 +59,12 @@ exports.handler = async (event) => {
     statusCode: 302,
     headers: {
       Location: `/?qb_connected=1&realmId=${realmId}`,
+    },
+    multiValueHeaders: {
       'Set-Cookie': [
         `qb_state=; HttpOnly; Secure; Max-Age=0; Path=/`,
         `qb_tokens=${encrypted}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=8640000`
-      ].join(', ')
+      ]
     },
     body: ''
   };
