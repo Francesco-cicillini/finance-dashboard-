@@ -3163,6 +3163,49 @@ function loadDemo(type) {
     });
 }
 
+// ── QB API DATA HANDLER ────────────────────────────────────────────────────
+function processQBData(qbPayload) {
+  try {
+    const mapTx = (tx) => ({
+      date:     tx.date,
+      amount:   parseFloat(tx.amount) || 0,
+      name:     tx.name || tx.description || '',
+      _rawName: tx.name || tx.description || '',
+      category: tx.category || 'Expense:Other / Misc',
+      type:     tx.type || (tx.amount < 0 ? 'expense' : 'income'),
+    });
+
+    const allTx  = (qbPayload.transactions || []).map(mapTx);
+    const tx2026 = allTx.filter(tx => tx.date && tx.date.startsWith('2026'));
+    const tx2025 = allTx.filter(tx => tx.date && tx.date.startsWith('2025'));
+    const tx2024 = allTx.filter(tx => tx.date && tx.date.startsWith('2024'));
+
+    const data = {
+      format:           'csv',
+      source:           'quickbooks',
+      bizName:          '',
+      budget:           qbPayload.budget || {},
+      transactions:     tx2025,
+      transactions2024: tx2024,
+      transactions2026: tx2026,
+      _hasBalance:      false,
+    };
+
+    const statusEl = document.getElementById('load-status');
+    if (statusEl) statusEl.textContent = 'QuickBooks connected — set your targets below.';
+
+    showBudgetScreen(data);
+
+  } catch(err) {
+    const statusEl = document.getElementById('load-status');
+    if (statusEl) {
+      statusEl.textContent = 'QB data error: ' + err.message;
+      statusEl.className = 'error';
+    }
+    console.error('processQBData error:', err);
+  }
+}
+
 function resetDashboard() {
   document.getElementById('dashboard').style.display      = 'none';
   document.getElementById('upload-screen').style.display  = 'flex';
@@ -5281,18 +5324,7 @@ function connectQuickBooks() {
   .then(r => r.json())
   .then(data => {
     if (!data.ok) throw new Error(data.error);
-    statusEl.textContent = 'QuickBooks data loaded!';
-    // Map QB response into dashboard data model
-    const txs    = data.transactions || [];
-    const budget = data.budget || {};
-    // Re-use existing pipeline: processData expects _rawTx and _budget globals
-    window._rawTx  = txs;
-    window._budget = budget;
-    if (typeof processData === 'function') {
-      processData(txs, budget);
-    } else {
-      console.log('QB data ready:', data);
-    }
+    processQBData(data);
   })
   .catch(err => {
     statusEl.textContent = 'QuickBooks error: ' + err.message;
