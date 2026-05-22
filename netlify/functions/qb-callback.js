@@ -53,18 +53,14 @@ exports.handler = async (event) => {
     refresh_expires_at:  Date.now() + (tokens.x_refresh_token_expires_in * 1000)
   };
 
-  const encrypted = encryptToken(tokenData, tokenSecret);
+  const tokenSecret2  = process.env.QB_TOKEN_SECRET;
+  const encrypted = encryptToken(tokenData, tokenSecret2);
+  const encoded   = encodeURIComponent(encrypted);
 
   return {
     statusCode: 302,
     headers: {
-      Location: `/?qb_connected=1&realmId=${realmId}`,
-    },
-    multiValueHeaders: {
-      'Set-Cookie': [
-        `qb_state=; HttpOnly; Secure; Max-Age=0; Path=/`,
-        `qb_tokens=${encrypted}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=8640000`
-      ]
+      Location: `/?qb_connected=1&realmId=${realmId}#qbt=${encoded}`
     },
     body: ''
   };
