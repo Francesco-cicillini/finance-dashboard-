@@ -56,11 +56,9 @@ function mapQBAccountToCategory(accountName, accountType) {
 async function fetchPLReport(realmId, accessToken, startDate, endDate) {
   const url = `${QB_BASE}/v3/company/${realmId}/reports/ProfitAndLoss` +
     `?start_date=${startDate}&end_date=${endDate}&summarize_column_by=Month&minorversion=65`;
-
   const res = await fetch(url, {
     headers: { 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/json' }
   });
-
   if (!res.ok) throw new Error(`QB P&L error: ${res.status} ${await res.text()}`);
   return res.json();
 }
@@ -68,11 +66,9 @@ async function fetchPLReport(realmId, accessToken, startDate, endDate) {
 async function fetchTransactions(realmId, accessToken, startDate, endDate) {
   const url = `${QB_BASE}/v3/company/${realmId}/reports/TransactionList` +
     `?start_date=${startDate}&end_date=${endDate}&minorversion=65`;
-
   const res = await fetch(url, {
     headers: { 'Authorization': `Bearer ${accessToken}`, 'Accept': 'application/json' }
   });
-
   if (!res.ok) throw new Error(`QB TransactionList error: ${res.status} ${await res.text()}`);
   return res.json();
 }
@@ -122,7 +118,6 @@ function parseTransactions(txReport) {
       const account = cols[5]?.value || '';
       const amount  = parseFloat(cols[7]?.value || 0);
       if (!date || isNaN(amount)) return;
-
       transactions.push({
         date,
         category: mapQBAccountToCategory(account, inferTypeFromTxType(type)),
@@ -141,10 +136,8 @@ exports.handler = async (event) => {
   };
 
   try {
-    // Get token from Authorization header (sent by dashboard JS)
     const authHeader = event.headers['authorization'] || event.headers['Authorization'] || '';
     const encrypted  = authHeader.replace('Bearer ', '').trim();
-
     if (!encrypted) throw new Error('No token provided');
 
     const tokenSecret = process.env.QB_TOKEN_SECRET;
@@ -158,4 +151,37 @@ exports.handler = async (event) => {
     const endDate   = now.toISOString().slice(0, 10);
     const startDate = new Date(new Date().setFullYear(now.getFullYear() - 1)).toISOString().slice(0, 10);
 
-    const [plReport, txReport] = aw
+    const [plReport, txReport] = await Promise.all([
+      fetchPLReport(realmId, access_token, startDate, endDate),
+      fetchTransactions(realmId, access_token, startDate, endDate)
+    ]);
+
+    const budgetAnnual  = parsePLToBudget(plReport);
+    const budgetMonthly = {};
+    Object.keys(budgetAnnual).forEach(k => {
+      budgetMonthly[k] = Math.round(budgetAnnual[k] / 12);
+    });
+
+    const transactions = parseTransactions(txReport);
+
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        ok: true,
+        realmId,
+        dateRange: { startDate, endDate },
+        budget: budgetMonthly,
+        transactions,
+        raw: { accountsFound: [...new Set(transactions.map(t => t.category))] }
+      })
+    };
+
+  } catch (err) {
+    return {
+      statusCode: 401,
+      headers,
+      body: JSON.stringify({ ok: false, error: err.message })
+    };
+  }
+};
