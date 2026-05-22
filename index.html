@@ -751,6 +751,10 @@
       </div>
     </div>
     <input type="file" id="file-input" accept=".csv,.iif,.txt">
+    <div class="divider">or connect directly</div>
+    <button class="demo-btn" id="qb-connect-btn" onclick="connectQuickBooks()" style="background:#2CA01C;color:#fff;border-color:#2CA01C;font-weight:600;">
+      <span>🔗</span> Connect QuickBooks
+    </button>
     <div class="divider">or load demo data</div>
     <div class="demo-options">
       <button class="demo-btn" onclick="loadDemo('csv')">
@@ -5249,6 +5253,52 @@ function exportWithRules() {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
+// ── QUICKBOOKS CONNECT ──────────────────────────────────────────
+function connectQuickBooks() {
+  document.getElementById('load-status').textContent = 'Redirecting to QuickBooks…';
+  window.location.href = '/api/qb-auth-init';
+}
+
+// On page load — check for QB token in URL hash
+(function() {
+  const hash  = window.location.hash;
+  const match = hash.match(/qbt=([^&]+)/);
+  if (!match) return;
+
+  const token = match[1];
+  localStorage.setItem('qb_token', token);
+
+  // Clean hash from URL
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+
+  const statusEl = document.getElementById('load-status');
+  statusEl.textContent = 'Connected to QuickBooks — loading your data…';
+
+  fetch('/api/qb-fetch', {
+    headers: { 'Authorization': 'Bearer ' + token }
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.ok) throw new Error(data.error);
+    statusEl.textContent = 'QuickBooks data loaded!';
+    // Map QB response into dashboard data model
+    const txs    = data.transactions || [];
+    const budget = data.budget || {};
+    // Re-use existing pipeline: processData expects _rawTx and _budget globals
+    window._rawTx  = txs;
+    window._budget = budget;
+    if (typeof processData === 'function') {
+      processData(txs, budget);
+    } else {
+      console.log('QB data ready:', data);
+    }
+  })
+  .catch(err => {
+    statusEl.textContent = 'QuickBooks error: ' + err.message;
+    statusEl.className = 'error';
+  });
+})();
 </script>
 
 <!-- ══════════════ CATEGORY MAP OVERLAY ══════════════ -->
