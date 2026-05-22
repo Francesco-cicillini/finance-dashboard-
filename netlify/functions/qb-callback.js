@@ -46,15 +46,14 @@ exports.handler = async (event) => {
   const tokens = await tokenRes.json();
 
   const tokenData = {
-    access_token:        tokens.access_token,
-    refresh_token:       tokens.refresh_token,
+    access_token:       tokens.access_token,
+    refresh_token:      tokens.refresh_token,
     realmId,
-    expires_at:          Date.now() + (tokens.expires_in * 1000),
-    refresh_expires_at:  Date.now() + (tokens.x_refresh_token_expires_in * 1000)
+    expires_at:         Date.now() + (tokens.expires_in * 1000),
+    refresh_expires_at: Date.now() + (tokens.x_refresh_token_expires_in * 1000)
   };
 
-  const tokenSecret2  = process.env.QB_TOKEN_SECRET;
-  const encrypted = encryptToken(tokenData, tokenSecret2);
+  const encrypted = encryptToken(tokenData, tokenSecret);
   const encoded   = encodeURIComponent(encrypted);
 
   return {
