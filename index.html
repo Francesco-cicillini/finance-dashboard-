@@ -3190,9 +3190,9 @@ function processQBData(qbPayload) {
       source:           'quickbooks',
       bizName:          '',
       budget:           qbPayload.budget || {},
-      transactions:     txCur,   // current year — main actuals bucket
-      transactions2024: txTwo,   // two years ago
-      transactions2026: txLast,  // prior year — YoY comparison
+      transactions:     txLast,  // prior full year (2025) — YoY comparison
+      transactions2024: txTwo,   // two years ago (2024)
+      transactions2026: txCur,   // current year YTD actuals (2026)
       _hasBalance:      false,
     };
 
