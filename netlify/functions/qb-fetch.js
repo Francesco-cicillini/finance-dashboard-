@@ -1,6 +1,6 @@
 const { decryptToken } = require('./_qb-token-store');
 
-const QB_BASE = 'https://sandbox-quickbooks.api.intuit.com'; // swap to quickbooks.api.intuit.com for production
+const QB_BASE = 'https://quickbooks.api.intuit.com';// swap to quickbooks.api.intuit.com for production
 
 const CATEGORIES = [
   'Revenue:Food & Beverage Sales',
