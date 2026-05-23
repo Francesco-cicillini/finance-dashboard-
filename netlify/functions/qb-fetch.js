@@ -32,7 +32,7 @@ function mapQBAccountToCategory(accountName, accountType) {
   if (n.includes('adp payroll') || n.includes('adp wages'))                      return 'Expense:Labor & Payroll';
   if (n.includes('empire state realty'))                                          return 'Expense:Rent';
   if (n.includes('nyc water board') || n.includes('coned') || n.includes('con ed')) return 'Expense:Utilities';
-  if (n.includes('quickpack supplies') || n.includes('cintas corp'))             return 'Expense:Supplies';
+  if (n.includes('quickpack supplies') || n.includes('cintas corp'))             return 'Expense:Supplies & Packaging';
   if (n.includes('grubhub services fee') || n.includes('grubhub fee'))           return 'Expense:Marketing';
   if (n.includes('google ads'))                                                   return 'Expense:Marketing';
   if (n.includes('safe harbor insurance'))                                        return 'Expense:Insurance';
@@ -51,7 +51,7 @@ function mapQBAccountToCategory(accountName, accountType) {
   if (n === 'wages' || n.includes('payroll') || n.includes('wage') || n.includes('labor') || n.includes('salary')) return 'Expense:Labor & Payroll';
   if (n === 'building & land rent' || n.includes('rent') || n.includes('lease'))                                    return 'Expense:Rent';
   if (n === 'utilities' || n.includes('utilit') || n.includes('electric') || n.includes('gas') || n.includes('water')) return 'Expense:Utilities';
-  if (n === 'supplies' || n.includes('suppli') || n.includes('paper') || n.includes('clean') || n.includes('uniform')) return 'Expense:Supplies';
+  if (n === 'supplies' || n.includes('suppli') || n.includes('paper') || n.includes('clean') || n.includes('uniform')) return 'Expense:Supplies & Packaging';
   if (n === 'advertising & marketing' || n.includes('market') || n.includes('adverti') || n.includes('promo'))     return 'Expense:Marketing';
   if (n === 'insurance' || n.includes('insur'))                                                                      return 'Expense:Insurance';
   if (n.includes('repair') || n.includes('mainten'))                                                                return 'Expense:Repairs & Maintenance';
