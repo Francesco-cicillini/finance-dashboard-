@@ -5299,8 +5299,9 @@ function exportWithRules() {
 
 // ── QUICKBOOKS CONNECT ──────────────────────────────────────────
 function connectQuickBooks() {
+  const biz = _bizType || 'restaurant';
   document.getElementById('load-status').textContent = 'Redirecting to QuickBooks…';
-  window.location.href = '/api/qb-auth-init';
+  window.location.href = '/api/qb-auth-init?bizType=' + encodeURIComponent(biz);
 }
 
 // On page load — check for QB token in URL hash
@@ -5309,11 +5310,16 @@ function connectQuickBooks() {
   const match = hash.match(/qbt=([^&]+)/);
   if (!match) return;
 
-  const token = match[1];
+  // Read bizType from query string and apply BEFORE anything renders
+  const params  = new URLSearchParams(window.location.search);
+  const bizType = params.get('bizType') || 'restaurant';
+  setBizType(bizType);
+
+  const token = decodeURIComponent(match[1]);
   localStorage.setItem('qb_token', token);
 
-  // Clean hash from URL
-  history.replaceState(null, '', window.location.pathname + window.location.search);
+  // Clean URL — remove hash and query params
+  history.replaceState(null, '', window.location.pathname);
 
   const statusEl = document.getElementById('load-status');
   statusEl.textContent = 'Connected to QuickBooks — loading your data…';
