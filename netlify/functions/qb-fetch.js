@@ -14,7 +14,7 @@ const CATEGORIES = [
   'Expense:Utilities',
   'Expense:Marketing',
   'Expense:Software & Subscriptions',
-  'Expense:Supplies',
+  'Expense:Supplies & Packaging',
   'Expense:Insurance',
   'Expense:Repairs & Maintenance',
   'Expense:Professional Fees',
