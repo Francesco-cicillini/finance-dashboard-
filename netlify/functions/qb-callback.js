@@ -11,9 +11,21 @@ function encryptToken(data, secret) {
 exports.handler = async (event) => {
   const { code, realmId, state } = event.queryStringParameters || {};
   const cookieHeader = event.headers.cookie || '';
-  const storedState  = (cookieHeader.match(/qb_state=([^;]+)/) || [])[1];
 
-  if (!state || state !== storedState) {
+  // ── Decode state — extract csrf + bizType ──────────────────────
+  let bizType = 'restaurant';
+  let csrf    = '';
+  try {
+    const decoded = JSON.parse(Buffer.from(state, 'base64').toString());
+    bizType = decoded.bizType || 'restaurant';
+    csrf    = decoded.csrf    || '';
+  } catch (e) {
+    return { statusCode: 400, body: 'Invalid state parameter' };
+  }
+
+  // ── CSRF validation ────────────────────────────────────────────
+  const storedCsrf = (cookieHeader.match(/qb_csrf=([^;]+)/) || [])[1] || '';
+  if (!csrf || csrf !== storedCsrf) {
     return { statusCode: 400, body: 'Invalid state parameter' };
   }
 
@@ -24,6 +36,7 @@ exports.handler = async (event) => {
 
   const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
+  // ── Exchange auth code for tokens ──────────────────────────────
   const tokenRes = await fetch('https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer', {
     method: 'POST',
     headers: {
@@ -56,10 +69,13 @@ exports.handler = async (event) => {
   const encrypted = encryptToken(tokenData, tokenSecret);
   const encoded   = encodeURIComponent(encrypted);
 
+  // ── Redirect — bizType in query string, token in hash ─────────
+  // Query string: readable before hash, needed by dashboard JS on load
+  // Hash fragment: never sent to server, keeps token out of logs
   return {
     statusCode: 302,
     headers: {
-      Location: `/?qb_connected=1&realmId=${realmId}#qbt=${encoded}`
+      Location: `/?qb_connected=1&realmId=${realmId}&bizType=${encodeURIComponent(bizType)}#qbt=${encoded}`
     },
     body: ''
   };
