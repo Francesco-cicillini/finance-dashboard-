@@ -3175,19 +3175,24 @@ function processQBData(qbPayload) {
       type:     tx.type || (tx.amount < 0 ? 'expense' : 'income'),
     });
 
-    const allTx  = (qbPayload.transactions || []).map(mapTx);
-    const tx2026 = allTx.filter(tx => tx.date && tx.date.startsWith('2026'));
-    const tx2025 = allTx.filter(tx => tx.date && tx.date.startsWith('2025'));
-    const tx2024 = allTx.filter(tx => tx.date && tx.date.startsWith('2024'));
+    // Dynamic year buckets — works correctly regardless of current year
+    const curYear  = new Date().getFullYear().toString();       // 2026 — current YTD actuals
+    const lastYear = (new Date().getFullYear() - 1).toString(); // 2025 — prior full year (YoY)
+    const twoYears = (new Date().getFullYear() - 2).toString(); // 2024 — two years ago
+
+    const allTx    = (qbPayload.transactions || []).map(mapTx);
+    const txCur    = allTx.filter(tx => tx.date && tx.date.startsWith(curYear));
+    const txLast   = allTx.filter(tx => tx.date && tx.date.startsWith(lastYear));
+    const txTwo    = allTx.filter(tx => tx.date && tx.date.startsWith(twoYears));
 
     const data = {
       format:           'csv',
       source:           'quickbooks',
       bizName:          '',
       budget:           qbPayload.budget || {},
-      transactions:     tx2025,
-      transactions2024: tx2024,
-      transactions2026: tx2026,
+      transactions:     txCur,   // current year — main actuals bucket
+      transactions2024: txTwo,   // two years ago
+      transactions2026: txLast,  // prior year — YoY comparison
       _hasBalance:      false,
     };
 
@@ -5299,9 +5304,8 @@ function exportWithRules() {
 
 // ── QUICKBOOKS CONNECT ──────────────────────────────────────────
 function connectQuickBooks() {
-  const biz = _bizType || 'restaurant';
   document.getElementById('load-status').textContent = 'Redirecting to QuickBooks…';
-  window.location.href = '/api/qb-auth-init?bizType=' + encodeURIComponent(biz);
+  window.location.href = '/api/qb-auth-init';
 }
 
 // On page load — check for QB token in URL hash
@@ -5310,16 +5314,11 @@ function connectQuickBooks() {
   const match = hash.match(/qbt=([^&]+)/);
   if (!match) return;
 
-  // Read bizType from query string and apply BEFORE anything renders
-  const params  = new URLSearchParams(window.location.search);
-  const bizType = params.get('bizType') || 'restaurant';
-  setBizType(bizType);
-
-  const token = decodeURIComponent(match[1]);
+  const token = match[1];
   localStorage.setItem('qb_token', token);
 
-  // Clean URL — remove hash and query params
-  history.replaceState(null, '', window.location.pathname);
+  // Clean hash from URL
+  history.replaceState(null, '', window.location.pathname + window.location.search);
 
   const statusEl = document.getElementById('load-status');
   statusEl.textContent = 'Connected to QuickBooks — loading your data…';
