@@ -1,6 +1,6 @@
 const { decryptToken } = require('./_qb-token-store');
 
-const QB_BASE = 'https://quickbooks.api.intuit.com'; // production
+const QB_BASE = 'https://quickbooks.api.intuit.com';
 
 const CATEGORIES = [
   'Revenue:Food & Beverage Sales',
@@ -21,95 +21,61 @@ const CATEGORIES = [
   'Expense:Other / Misc'
 ];
 
-// ── Category Mapper ────────────────────────────────────────────────────────
-// Two-pass approach:
-// 1. Exact/prefix match on known transaction descriptions (ACH, Square, etc.)
-// 2. Keyword match on QB chart of accounts names
-// Any unmatched account falls to Expense:Other / Misc
-
 function mapQBAccountToCategory(accountName, accountType) {
   const n = (accountName || '').toLowerCase();
   const t = (accountType || '').toLowerCase();
 
   // ── Pass 1: Exact/prefix matches on known transaction descriptions ────────
 
-  // Revenue — GrubHub payouts
   if (n.includes('grubhub') && (n.includes('credit') || n.includes('payout'))) {
     return 'Revenue:Food & Beverage Sales';
   }
-
-  // Revenue — Square dine-in payments
   if (n.includes('square inc payment') || n.includes('mikes kitchen dine-in')) {
     return 'Revenue:Food & Beverage Sales';
   }
-
-  // COGS — Beverage
   if (n.includes('tri-state beverage') || n.includes('tristate beverage')) {
     return 'COGS:Beverage Cost';
   }
-
-  // COGS — Food
   if (n.includes('metro fresh foods')) {
     return 'COGS:Food Cost';
   }
-
-  // Labor
   if (n.includes('adp payroll') || n.includes('adp wages')) {
     return 'Expense:Labor & Payroll';
   }
-
-  // Rent
   if (n.includes('empire state realty')) {
     return 'Expense:Rent';
   }
-
-  // Utilities
   if (n.includes('nyc water board') || n.includes('coned') || n.includes('con ed')) {
     return 'Expense:Utilities';
   }
-
-  // Supplies
   if (n.includes('quickpack supplies') || n.includes('cintas corp')) {
     return 'Expense:Supplies';
   }
-
-  // Marketing — GrubHub fees (expense side, not payout)
   if (n.includes('grubhub services fee') || n.includes('grubhub fee')) {
     return 'Expense:Marketing';
   }
-
-  // Marketing — Google Ads
   if (n.includes('google ads')) {
     return 'Expense:Marketing';
   }
-
-  // Insurance
   if (n.includes('safe harbor insurance')) {
     return 'Expense:Insurance';
   }
-
-  // Payment processing fees
   if (n.includes('heartland payment')) {
     return 'Expense:Other / Misc';
   }
 
-  // ── Pass 2: QB chart of accounts name keyword matching ───────────────────
+  // ── Pass 2: Chart of accounts keyword matching ───────────────────────────
 
-  // Revenue
   if (t === 'income' || t === 'revenue' || n === 'sales') {
     if (n.includes('cater') || n.includes('event'))                               return 'Revenue:Catering & Events';
     if (n.includes('retail') || n.includes('product') || n.includes('packaged')) return 'Revenue:Retail / Packaged Goods';
     return 'Revenue:Food & Beverage Sales';
   }
-
-  // COGS
   if (t === 'cost of goods sold' || n.includes('direct supplies') || n.includes('direct materials')) {
     if (n.includes('bev') || n.includes('drink') || n.includes('liquor') || n.includes('bar')) return 'COGS:Beverage Cost';
     if (n.includes('food') || n.includes('ingredi') || n.includes('produce'))                  return 'COGS:Food Cost';
     return 'COGS:Other COGS';
   }
-
-  // Expenses by account name
   if (n === 'wages' || n.includes('payroll') || n.includes('wage') || n.includes('labor') || n.includes('salary')) {
     return 'Expense:Labor & Payroll';
   }
@@ -142,11 +108,8 @@ function mapQBAccountToCategory(accountName, accountType) {
     return 'Expense:Other / Misc';
   }
 
-  // Fallback
   return 'Expense:Other / Misc';
 }
-
-// ── QB API Calls ───────────────────────────────────────────────────────────
 
 async function fetchPLReport(realmId, accessToken, startDate, endDate) {
   const url = `${QB_BASE}/v3/company/${realmId}/reports/ProfitAndLoss` +
@@ -168,8 +131,6 @@ async function fetchTransactions(realmId, accessToken, startDate, endDate) {
   return res.json();
 }
 
-// ── P&L → Budget ───────────────────────────────────────────────────────────
-
 function parsePLToBudget(plReport) {
   const budget = {};
   CATEGORIES.forEach(c => budget[c] = 0);
@@ -188,6 +149,10 @@ function parsePLToBudget(plReport) {
       const accountName = row.ColData?.[0]?.value || '';
       const amount      = parseFloat(row.ColData?.[1]?.value || 0);
       if (!accountName || isNaN(amount)) return;
+
+      // DEBUG — remove once mapping is confirmed correct
+      console.log('PL_ROW:', JSON.stringify({ accountName, sectionType, amount }));
+
       const cat = mapQBAccountToCategory(accountName, sectionType);
       budget[cat] = (budget[cat] || 0) + Math.abs(amount);
     }
@@ -196,8 +161,6 @@ function parsePLToBudget(plReport) {
   (plReport?.Rows?.Row || []).forEach(r => processRow(r, 'expense'));
   return budget;
 }
-
-// ── Transactions ───────────────────────────────────────────────────────────
 
 function inferTypeFromTxType(qbType) {
   const t = (qbType || '').toLowerCase();
@@ -218,8 +181,6 @@ function parseTransactions(txReport) {
       const amount  = parseFloat(cols[7]?.value || 0);
       if (!date || isNaN(amount)) return;
 
-      // Use the transaction name/description for mapping (more specific than account)
-      // Fall back to account name if name is generic
       const mapTarget = name || account;
       const category  = mapQBAccountToCategory(mapTarget, inferTypeFromTxType(type));
 
@@ -233,8 +194,6 @@ function parseTransactions(txReport) {
     });
   return transactions;
 }
-
-// ── Extract all unique account names for logging ───────────────────────────
 
 function extractAllAccountNames(plReport, txReport) {
   const names = new Set();
@@ -260,8 +219,6 @@ function extractAllAccountNames(plReport, txReport) {
 
   return [...names].filter(Boolean).sort();
 }
-
-// ── Handler ────────────────────────────────────────────────────────────────
 
 exports.handler = async (event) => {
   const headers = {
@@ -290,7 +247,6 @@ exports.handler = async (event) => {
       fetchTransactions(realmId, access_token, startDate, endDate)
     ]);
 
-    // Log all account names — keep this in place for tuning the mapper
     const rawAccountNames = extractAllAccountNames(plReport, txReport);
     console.log('QB_ACCOUNTS_FOUND:', JSON.stringify(rawAccountNames, null, 2));
 
