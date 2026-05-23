@@ -1,6 +1,6 @@
 const { decryptToken } = require('./_qb-token-store');
 
-const QB_BASE = 'https://sandbox-quickbooks.api.intuit.com';
+const QB_BASE = 'https://sandbox-quickbooks.api.intuit.com'; // swap to quickbooks.api.intuit.com for production
 
 const CATEGORIES = [
   'Revenue:Food & Beverage Sales',
@@ -156,6 +156,12 @@ exports.handler = async (event) => {
       fetchTransactions(realmId, access_token, startDate, endDate)
     ]);
 
+    // ── LOG ACCOUNT NAMES — used to build QB_CAT_MAP once real client connects ──
+    // Check Netlify → Functions → qb-fetch → Logs after first real connection.
+    // Copy the QB_ACCOUNTS_FOUND output and use it to expand mapQBAccountToCategory above.
+    const rawAccountNames = extractAllAccountNames(plReport, txReport);
+    console.log('QB_ACCOUNTS_FOUND:', JSON.stringify(rawAccountNames, null, 2));
+
     const budgetAnnual  = parsePLToBudget(plReport);
     const budgetMonthly = {};
     Object.keys(budgetAnnual).forEach(k => {
@@ -173,7 +179,7 @@ exports.handler = async (event) => {
         dateRange: { startDate, endDate },
         budget: budgetMonthly,
         transactions,
-        raw: { accountsFound: [...new Set(transactions.map(t => t.category))] }
+        raw: { accountsFound: rawAccountNames }
       })
     };
 
@@ -185,3 +191,30 @@ exports.handler = async (event) => {
     };
   }
 };
+
+// ── Extract every unique account name from P&L + transaction reports ────────
+// This gives us the raw strings to build mapQBAccountToCategory from.
+function extractAllAccountNames(plReport, txReport) {
+  const names = new Set();
+
+  // From P&L rows
+  function walkPL(rows) {
+    if (!rows) return;
+    for (const row of rows) {
+      const val = row.ColData?.[0]?.value;
+      if (val) names.add(val);
+      if (row.Rows?.Row) walkPL(row.Rows.Row);
+    }
+  }
+  walkPL(plReport?.Rows?.Row);
+
+  // From transaction list — account column (index 5)
+  (txReport?.Rows?.Row || [])
+    .filter(r => r.type === 'Data')
+    .forEach(row => {
+      const account = row.ColData?.[5]?.value;
+      if (account) names.add(account);
+    });
+
+  return [...names].filter(Boolean).sort();
+}
