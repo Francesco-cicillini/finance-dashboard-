@@ -21,50 +21,72 @@ const CATEGORIES = [
   'Expense:Other / Misc'
 ];
 
+// ── Category Mapper ────────────────────────────────────────────────────────
+// Pass 1: exact/prefix matches on known transaction names
+// Pass 2: keyword matches on QB chart of accounts names
+// Fallback: Expense:Other / Misc
+
 function mapQBAccountToCategory(accountName, accountType) {
   const n = (accountName || '').toLowerCase();
   const t = (accountType || '').toLowerCase();
 
-  // ── Pass 1: Exact/prefix matches on known transaction descriptions ────────
+  // ── Pass 1: Transaction name matches ──────────────────────────────────────
 
+  // Revenue
   if (n.includes('grubhub') && (n.includes('credit') || n.includes('payout'))) {
     return 'Revenue:Food & Beverage Sales';
   }
   if (n.includes('square inc payment') || n.includes('mikes kitchen dine-in')) {
     return 'Revenue:Food & Beverage Sales';
   }
+
+  // COGS
   if (n.includes('tri-state beverage') || n.includes('tristate beverage')) {
     return 'COGS:Beverage Cost';
   }
   if (n.includes('metro fresh foods')) {
     return 'COGS:Food Cost';
   }
+
+  // Labor
   if (n.includes('adp payroll') || n.includes('adp wages')) {
     return 'Expense:Labor & Payroll';
   }
+
+  // Rent
   if (n.includes('empire state realty')) {
     return 'Expense:Rent';
   }
+
+  // Utilities
   if (n.includes('nyc water board') || n.includes('coned') || n.includes('con ed')) {
     return 'Expense:Utilities';
   }
+
+  // Supplies
   if (n.includes('quickpack supplies') || n.includes('cintas corp')) {
     return 'Expense:Supplies';
   }
+
+  // Marketing
   if (n.includes('grubhub services fee') || n.includes('grubhub fee')) {
     return 'Expense:Marketing';
   }
   if (n.includes('google ads')) {
     return 'Expense:Marketing';
   }
+
+  // Insurance
   if (n.includes('safe harbor insurance')) {
     return 'Expense:Insurance';
   }
+
+  // Other
   if (n.includes('heartland payment')) {
     return 'Expense:Other / Misc';
   }
 
-  // ── Pass 2: Chart of accounts keyword matching ───────────────────────────
+  // ── Pass 2: Chart of accounts keyword matching ────────────────────────────
 
   if (t === 'income' || t === 'revenue' || n === 'sales') {
     if (n.includes('cater') || n.includes('event'))                               return 'Revenue:Catering & Events';
@@ -111,6 +133,8 @@ function mapQBAccountToCategory(accountName, accountType) {
   return 'Expense:Other / Misc';
 }
 
+// ── QB API Calls ───────────────────────────────────────────────────────────
+
 async function fetchPLReport(realmId, accessToken, startDate, endDate) {
   const url = `${QB_BASE}/v3/company/${realmId}/reports/ProfitAndLoss` +
     `?start_date=${startDate}&end_date=${endDate}&summarize_column_by=Month&minorversion=65`;
@@ -131,36 +155,9 @@ async function fetchTransactions(realmId, accessToken, startDate, endDate) {
   return res.json();
 }
 
-function parsePLToBudget(plReport) {
-  const budget = {};
-  CATEGORIES.forEach(c => budget[c] = 0);
-
-  function processRow(row, sectionType) {
-    if (row.type === 'Section') {
-      const header = row.Header?.ColData?.[0]?.value || '';
-      let st = sectionType;
-      if (/income|revenue|sales/i.test(header))  st = 'income';
-      else if (/cost of goods/i.test(header))     st = 'cost of goods sold';
-      else if (/expense/i.test(header))           st = 'expense';
-      (row.Rows?.Row || []).forEach(r => processRow(r, st));
-      return;
-    }
-    if (row.type === 'Data') {
-      const accountName = row.ColData?.[0]?.value || '';
-      const amount      = parseFloat(row.ColData?.[1]?.value || 0);
-      if (!accountName || isNaN(amount)) return;
-
-      // DEBUG — remove once mapping is confirmed correct
-      console.log('PL_ROW:', JSON.stringify({ accountName, sectionType, amount }));
-
-      const cat = mapQBAccountToCategory(accountName, sectionType);
-      budget[cat] = (budget[cat] || 0) + Math.abs(amount);
-    }
-  }
-
-  (plReport?.Rows?.Row || []).forEach(r => processRow(r, 'expense'));
-  return budget;
-}
+// ── Build budget from transactions (not P&L summary) ──────────────────────
+// P&L summary rows return $0 for accounts populated via bank feed transactions.
+// Aggregating from the transaction list gives accurate annual totals.
 
 function inferTypeFromTxType(qbType) {
   const t = (qbType || '').toLowerCase();
@@ -181,6 +178,7 @@ function parseTransactions(txReport) {
       const amount  = parseFloat(cols[7]?.value || 0);
       if (!date || isNaN(amount)) return;
 
+      // Use transaction name for mapping — more specific than account name
       const mapTarget = name || account;
       const category  = mapQBAccountToCategory(mapTarget, inferTypeFromTxType(type));
 
@@ -194,6 +192,31 @@ function parseTransactions(txReport) {
     });
   return transactions;
 }
+
+// ── Build budget by aggregating transactions into categories ───────────────
+// Annual totals → divide by 12 for monthly averages
+
+function buildBudgetFromTransactions(transactions) {
+  const annual = {};
+  CATEGORIES.forEach(c => annual[c] = 0);
+
+  transactions.forEach(tx => {
+    const cat = tx.category;
+    if (!annual[cat]) annual[cat] = 0;
+    annual[cat] += Math.abs(tx.amount);
+  });
+
+  // Convert to monthly averages
+  const monthly = {};
+  Object.keys(annual).forEach(k => {
+    monthly[k] = Math.round(annual[k] / 12);
+  });
+
+  console.log('BUDGET_MONTHLY:', JSON.stringify(monthly, null, 2));
+  return monthly;
+}
+
+// ── Extract all unique account names for logging ───────────────────────────
 
 function extractAllAccountNames(plReport, txReport) {
   const names = new Set();
@@ -219,6 +242,8 @@ function extractAllAccountNames(plReport, txReport) {
 
   return [...names].filter(Boolean).sort();
 }
+
+// ── Handler ────────────────────────────────────────────────────────────────
 
 exports.handler = async (event) => {
   const headers = {
@@ -247,16 +272,15 @@ exports.handler = async (event) => {
       fetchTransactions(realmId, access_token, startDate, endDate)
     ]);
 
+    // Log all account/transaction names for mapper tuning
     const rawAccountNames = extractAllAccountNames(plReport, txReport);
     console.log('QB_ACCOUNTS_FOUND:', JSON.stringify(rawAccountNames, null, 2));
 
-    const budgetAnnual  = parsePLToBudget(plReport);
-    const budgetMonthly = {};
-    Object.keys(budgetAnnual).forEach(k => {
-      budgetMonthly[k] = Math.round(budgetAnnual[k] / 12);
-    });
-
+    // Parse transactions first — budget is derived from these
     const transactions = parseTransactions(txReport);
+
+    // Build monthly budget from transaction totals
+    const budgetMonthly = buildBudgetFromTransactions(transactions);
 
     return {
       statusCode: 200,
@@ -272,6 +296,7 @@ exports.handler = async (event) => {
     };
 
   } catch (err) {
+    console.error('qb-fetch error:', err.message);
     return {
       statusCode: 401,
       headers,
