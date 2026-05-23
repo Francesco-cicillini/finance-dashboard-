@@ -3166,8 +3166,15 @@ function loadDemo(type) {
 // ── QB API DATA HANDLER ────────────────────────────────────────────────────
 function processQBData(qbPayload) {
   try {
+    // Convert QB date YYYY-MM-DD -> MM/DD/YYYY (dashboard getMonth/getYear expect slashes)
+    const fmtDate = (d) => {
+      if (!d) return '';
+      const p = d.split('-');
+      return p.length === 3 ? p[1]+'/'+p[2]+'/'+p[0] : d;
+    };
+
     const mapTx = (tx) => ({
-      date:     tx.date,
+      date:     fmtDate(tx.date),
       amount:   parseFloat(tx.amount) || 0,
       name:     tx.name || tx.description || '',
       _rawName: tx.name || tx.description || '',
@@ -3175,15 +3182,15 @@ function processQBData(qbPayload) {
       type:     tx.type || (tx.amount < 0 ? 'expense' : 'income'),
     });
 
-    // Dynamic year buckets — works correctly regardless of current year
-    const curYear  = new Date().getFullYear().toString();       // 2026 — current YTD actuals
-    const lastYear = (new Date().getFullYear() - 1).toString(); // 2025 — prior full year (YoY)
-    const twoYears = (new Date().getFullYear() - 2).toString(); // 2024 — two years ago
+    // Filter on original YYYY-MM-DD before conversion, then convert
+    const curYear  = new Date().getFullYear();
+    const lastYear = curYear - 1;
+    const twoYears = curYear - 2;
 
-    const allTx    = (qbPayload.transactions || []).map(mapTx);
-    const txCur    = allTx.filter(tx => tx.date && tx.date.startsWith(curYear));
-    const txLast   = allTx.filter(tx => tx.date && tx.date.startsWith(lastYear));
-    const txTwo    = allTx.filter(tx => tx.date && tx.date.startsWith(twoYears));
+    const allTx  = (qbPayload.transactions || []);
+    const txCur  = allTx.filter(tx => tx.date && tx.date.startsWith(String(curYear))).map(mapTx);
+    const txLast = allTx.filter(tx => tx.date && tx.date.startsWith(String(lastYear))).map(mapTx);
+    const txTwo  = allTx.filter(tx => tx.date && tx.date.startsWith(String(twoYears))).map(mapTx);
 
     const data = {
       format:           'csv',
