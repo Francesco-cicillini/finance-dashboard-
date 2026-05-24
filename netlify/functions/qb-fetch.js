@@ -198,7 +198,7 @@ exports.handler = async (event) => {
 
     const now       = new Date();
     const endDate   = now.toISOString().slice(0, 10);
-    const startDate = new Date(new Date().setFullYear(now.getFullYear() - 1)).toISOString().slice(0, 10);
+    const startDate = (now.getFullYear() - 1) + "-01-01"; // always start Jan 1 of prior year
 
     const [plReport, txReport] = await Promise.all([
       fetchPLReport(realmId, access_token, startDate, endDate),
